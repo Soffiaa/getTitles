@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "xlsx": "^0.14.1",
     "xlsx2json": "^1.0.0"
   }
 }
