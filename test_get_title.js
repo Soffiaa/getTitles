@@ -15,8 +15,6 @@ function getText(path) {
     return originalText.replace(/\r/g, '');
 }
 
-getText('./puzzle/1-2519.txt');
-
 function getArrText(text) {
     // let _text = text.trim().split('\n');
     let _text = text.split('\n');
@@ -27,24 +25,26 @@ function getArrText(text) {
     return processedText;
 }
 
-let regExpTitleLength;
-
 //使用正则提取文本标题，并处理原文本，将两者处理成后续方便对比的结构
+
 function processText(text) {
     let arrText = getArrText(text);
-    let firstLine = arrText[ 0 ];
+    let firstLine = arrText[ 0 ]; //有时候头几行都是空的，此处需要优化
     let arrTitleResult = arrText.join('').match(r);
+    // console.log('RegExp', r);
+    if (arrTitleResult == null) {
+        arrTitleResult = [];
+    }
     //单独识别第一行是不是标题，因为我写不出这个正则
-    if((/^[\S| ]{1,15}[  ]*\n/g).test(firstLine)){
+    if ((/^[\S| ]{1,30}[  ]*\n/g).test(firstLine) && arrTitleResult.length && arrTitleResult[ 0 ] !== firstLine) {
         arrTitleResult.unshift(firstLine);
     }
-    regExpTitleLength = arrTitleResult.length;
+    let regExpTitleLength = arrTitleResult.length;
     // console.log('正则处理结果', arrTitleResult, 'length', arrTitleResult.length);
     let processedContent = [];
     let arrTextStartIndex = 0;
     for (let i = 0; i < arrTitleResult.length; i++) {
         for (let j = arrTextStartIndex; j < arrText.length; j++) {
-            // if ((arrText[ j ] + '\n') == arrTitleResult[ i ]) {
             if ((arrText[ j ].trim()) == arrTitleResult[ i ].trim()) {
                 processedContent.push({
                     lineNumber: j + 1,
@@ -57,15 +57,15 @@ function processText(text) {
             } else {
                 processedContent.push({
                     lineNumber: j + 1,
-                    content: arrText[ j ] + '\n',
+                    content: arrText[ j ],
                     isTitle: false
                 });
                 arrTextStartIndex = j + 1;
             }
         }
     }
-    // console.log('原文本处理结果', (processedContent.length));
-    return processedContent;
+    // console.log('原文本处理结果', processedContent);
+    return { processedContent, regExpTitleLength, arrTitleResult };
 }
 
 // var ttt = getText('./result/我的红黑时代.txt');
@@ -120,8 +120,9 @@ function calTitleRegExpValidityRate(textPath, trueTitleFilePath) {
     return new Promise((resolve, reject) => {
         let text = getText(textPath);
         // console.log('get text', text);
-        let programResult = processText(text);
-        let trueResult, validityRate1, validityRate;
+        let processTextObject=processText(text);
+        let programResult = processTextObject.processedContent;
+        let trueResult, accuracy, precision, recall;
         processTrueTitles(text, trueTitleFilePath).then(
             result => {
                 let name = textPath.split('/')[ 2 ].split('.')[ 0 ];
@@ -131,39 +132,22 @@ function calTitleRegExpValidityRate(textPath, trueTitleFilePath) {
                 // let correctResultAmount1 = 0;
                 let correctResultAmount = 0;
                 let unMatchTitle = [];//人认为是，程序认为不是, 这种情况要尽量去完善正则
+                let correctMatchTitleAmount = 0;//人认为是，程序也认为是
+                let correctMatchTitle = [];
                 let wrongResult = []; //程序认为是，人认为不是，这种情况主要以调整参数为主，比较难避免
                 trueResult = result.trueTitleResult;
-                //计算方法1
-                //这个方法是不行的，当  正则与人工匹配的结果数量 ＞ 正则出来的结果，且正则出来的结果里包含了所有正确的结果（当然，还有错误的）时，这种计算方式得到的结果会是100%
-                //正则匹配出来的结果，可能是都正确，与人工的结果完全匹配；
-                // 也可能是数量多于人工的，且包含所有正确结果；
-                // 也可能是多于人工的，但不包含所有正确结果；
-                // 也可能是少于人工的，且包含所有正确结果；
-                // 也可能是少于人工的，但不包含所有正确结果
-                // if (trueResult.length === programResult.length) {
-                //     for (let i = 0; i < programResult.length; i++) {
-                //         // console.log(programResult[i].isTitle);
-                //         // console.log(programResult[i].isTitle);
-                //         if (programResult[ i ].isTitle === true && trueResult[ i ].isTitle === true) {
-                //             correctResultAmount1++;
-                //         } else if (programResult[ i ].isTitle === false && trueResult[ i ].isTitle === true) {
-                //             unMatchTitle.push({
-                //                 lineNumber: trueResult[ i ].lineNumber,
-                //                 content: trueResult[ i ].content,
-                //                 peopleConsiderItToBeATitle: trueResult[ i ].isTitle
-                //             });
-                //         }
-                //     }
-                //     // console.log('correctResultAmount1',correctResultAmount1);
-                // } else {
-                //     console.error(`!!!!!!!!!!!!!!统计出错：两份结果长度不一致↓↓↓\n程序处理结果长度为: ${programResult.length}\n人工处理的结果长度为: ${trueResult.length}`);
-                // }
-                // validityRate1 = `${correctResultAmount1 * 100 / result.trueTitleLength}%`;
 
-                //计算方法2
                 if (trueResult.length === programResult.length) {
                     for (let i = 0; i < programResult.length; i++) {
-                        if (programResult[ i ].isTitle === trueResult[ i ].isTitle) {
+                        if (programResult[ i ].isTitle === true && trueResult[ i ].isTitle === true) {
+                            correctResultAmount++;
+                            correctMatchTitleAmount++;
+                            correctMatchTitle.push({
+                                lineNumber: programResult[ i ].lineNumber,
+                                content: programResult[ i ].content,
+                                programConsiderItToBeATitle: programResult[ i ].isTitle
+                            });
+                        } else if (programResult[ i ].isTitle === false && trueResult[ i ].isTitle === false) {
                             correctResultAmount++;
                         } else if (programResult[ i ].isTitle === false && trueResult[ i ].isTitle === true) {
                             unMatchTitle.push({
@@ -183,23 +167,37 @@ function calTitleRegExpValidityRate(textPath, trueTitleFilePath) {
                 } else {
                     console.error(`!!!!!!!!!!!!!!统计出错：两份结果长度不一致↓↓↓\n程序处理结果长度为: ${programResult.length}\n人工处理的结果长度为: ${trueResult.length}`);
                 }
+
+                //计算准确率accuracy：对于给定的测试数据集，分类器正确分类的样本数与总样本数之比
                 let totalLines = getArrText(text).length;
-                validityRate = `${correctResultAmount * 100 / totalLines}%`;
-                // console.log(`------> validityRate1: ${validityRate1}`);
-                console.log(`-> validityRate: ${validityRate}`);
+                accuracy = (correctResultAmount / totalLines).toFixed(2);
+
+                //计算精确率(precision)：所有"正确被检索的item(TP)"占所有"实际被检索到的(TP+FP)"的比例
+                // console.log('正确被检索的item', correctMatchTitleAmount);
+                // console.log('正则匹配结果长度', processText(text).regExpTitleLength);
+                precision = (correctMatchTitleAmount / processText(text).regExpTitleLength).toFixed(2);
+
+                //计算召回率(recall)：所有"正确被检索的item(TP)"占所有"应该检索到的item(TP+FN)"的比例
+                // console.log('正确结果长度', result.trueTitleLength);
+                recall = (correctMatchTitleAmount / result.trueTitleLength).toFixed(2);
+
+                console.log(`-> 准确率accuracy: ${accuracy}`);
                 console.log(`-> unMatchTitleLength：${unMatchTitle.length}`);
                 console.log(`-> wrongResultLength：${wrongResult.length}`);
                 // console.log(`-> wrongResult：${JSON.stringify(wrongResult)}`);
                 // console.log(`-> unMatchTitle：${JSON.stringify(unMatchTitle)}`);
                 dataToExcel.push({
                     '名称': name,
-                    '原文处理结果长度': programResult.length,
-                    '原文行数': getArrText(text).length,
-                    '标题识别正确率': validityRate,
-                    '未匹配到的标题数量': unMatchTitle.length,
-                    '未匹配到的标题':JSON.stringify(unMatchTitle),
-                    '错误识别的标题数量': wrongResult.length,
-                    '错误识别的标题':JSON.stringify(wrongResult),
+                    // '原文处理结果长度': programResult.length,
+                    // '原文行数': getArrText(text).length,
+                    '准确率(accuracy)': accuracy,
+                    '精确率(precision)': precision,
+                    '召回率(recall)': recall,
+                    '正则匹配结果':JSON.stringify(processTextObject.arrTitleResult),
+                    // '未匹配到的标题数量': unMatchTitle.length,
+                    // '未匹配到的标题':JSON.stringify(unMatchTitle),
+                    // '错误识别的标题数量': wrongResult.length,
+                    // '错误识别的标题':JSON.stringify(wrongResult),
                 });
                 resolve();
             }
@@ -208,8 +206,10 @@ function calTitleRegExpValidityRate(textPath, trueTitleFilePath) {
 }
 
 // calTitleRegExpValidityRate('./result/test_text.txt', './result/test_text.xlsx');
-// const directoryPath = './result';
 const directoryPath = './result';
+// const directoryPath = './puzzle';
+// const directoryPath = './test';
+
 let filePathLists = [];
 fs.readdirSync(directoryPath).forEach(file => {
     filePathLists.push({
@@ -257,7 +257,16 @@ function calValidityRate(i) {
             XLSX.utils.book_append_sheet(wb, ws, 'result');
 
             /* 生成xlsx文件 */
-            XLSX.writeFile(wb, '统计结果.xlsx');
+            let d = new Date();
+            let m;
+            if ((d.getMonth() + 1) < 10) {
+                m = '0' + (d.getMonth() + 1).toString();
+            } else {
+                m = (d.getMonth() + 1).toString();
+            }
+
+            let timeStamp = d.getFullYear().toString() + m + d.getDate().toString() + d.getHours().toString() + d.getMinutes().toString();
+            XLSX.writeFile(wb, `统计结果${timeStamp}.xlsx`);
             // var data = [
             //     {"name":"John", "city": "Seattle"},
             //     {"name":"Miiiike", "city": "Los Angeles"},
